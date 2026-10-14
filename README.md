@@ -55,7 +55,28 @@ node --check frontend/js/api.js
 
 提交实践记录时，系统根据填写的活动内容和成员分工生成参考分析与摘要；教师可在详情页重新生成。分析采用本地规则，不调用外部 AI 服务，也不据字数推断实践成果。请结合原始记录核对建议。
 
-## Windows 校园局域网试用
+## 校园局域网部署
+
+### 一键部署
+
+从仓库克隆到 Windows 本机磁盘后，安装 Python 3，在**管理员 PowerShell** 中执行：
+
+```powershell
+cd C:\AiCourse
+powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\windows.ps1
+```
+
+脚本会安装依赖、首次询问管理员密码、生成并保存密钥、创建开机启动任务，并开放仅限本地子网访问的 8000 端口。重复运行会保留现有 `.env`、数据库和上传文件。部署电脑保持开机后，其他设备访问 `http://<部署电脑IPv4地址>:8000`。如果学校把设备分在不同子网，请联系网管调整互访及防火墙规则。
+
+Ubuntu/Debian Linux 在项目目录中执行：
+
+```sh
+bash deploy/linux.sh
+```
+
+请使用有 `sudo` 权限的普通用户。脚本安装依赖、保存 `.env`，并创建 `aicourse` systemd 服务。通过 `sudo systemctl status aicourse` 查看状态；如果系统防火墙已启用，还需由管理员允许校园局域网访问 TCP 8000 端口。Linux 脚本需要项目路径不含空格。
+
+### Windows 手动启动
 
 在 Windows 电脑安装 Python 3，将项目放在例如 `C:\AiCourse`。在 PowerShell 中执行：
 
