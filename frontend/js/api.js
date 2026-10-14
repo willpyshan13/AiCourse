@@ -78,8 +78,23 @@ async function adminRequest(path, options = {}) {
 
 const adminApi = {
   login: (username, password) => adminRequest('/login', { method: 'POST', body: { username, password } }),
+  overview: () => adminRequest('/overview'),
   teachers: () => adminRequest('/teachers'),
   addTeacher: (name, school, password) => adminRequest('/teachers', { method: 'POST', body: { name, school, password } }),
+  updateTeacher: (id, data) => adminRequest(`/teachers/${id}`, { method: 'PUT', body: data }),
+  resetTeacherPassword: (id, password) => adminRequest(`/teachers/${id}/password`, { method: 'POST', body: { password } }),
+  classes: () => adminRequest('/classes'),
+  addClass: (data) => adminRequest('/classes', { method: 'POST', body: data }),
+  updateClass: (id, data) => adminRequest(`/classes/${id}`, { method: 'PUT', body: data }),
+  deleteClass: (id) => adminRequest(`/classes/${id}`, { method: 'DELETE' }),
+  classTeams: (id) => adminRequest(`/classes/${id}/teams`),
+  students: (classId, query = '', offset = 0) => adminRequest(
+    `/students?class_id=${classId}&query=${encodeURIComponent(query)}&limit=100&offset=${offset}`
+  ),
+  addStudent: (data) => adminRequest('/students', { method: 'POST', body: data }),
+  updateStudent: (id, data) => adminRequest(`/students/${id}`, { method: 'PUT', body: data }),
+  deleteStudent: (id) => adminRequest(`/students/${id}`, { method: 'DELETE' }),
+  resetStudentCode: (id) => adminRequest(`/students/${id}/login-code`, { method: 'POST' }),
 };
 
 const classApi = {

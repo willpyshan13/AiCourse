@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>智慧综合实践课堂</title>
-    <link rel="stylesheet" href="/css/style.css?v=20">
+    <link rel="stylesheet" href="/css/style.css?v=21">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
@@ -36,7 +36,7 @@
             <section class="home-hero">
                 <div class="home-hero-inner">
                     <h1>综合实践 · 见证成长</h1>
-                    <p>记录综合实践作业 · 小组协作管理 · AI 智能分析</p>
+                    <p>记录综合实践作业 · 小组协作管理 · 实践参考分析</p>
                 </div>
             </section>
 
@@ -68,7 +68,7 @@
                         <input type="text" id="login-name" placeholder="请输入教师姓名" class="input-field" autocomplete="off">
                         <input type="password" id="login-password" placeholder="请输入密码" class="input-field" autocomplete="current-password">
                         <button id="login-btn" class="btn-primary">登录</button>
-                        <button class="login-back" onclick="showPage('admin-page')">管理员添加教师</button>
+                        <button class="login-back" onclick="showPage('admin-page')">超级管理员</button>
 
                         <button class="login-back" onclick="showHomePage()">← 返回首页</button>
                     </div>
@@ -76,27 +76,31 @@
             </div>
         </div>
 
-        <!-- Administrator teacher management -->
+        <!-- School-wide administrator dashboard -->
         <div id="admin-page" class="page hidden">
-            <div class="login-container">
+            <div id="admin-login-panel" class="login-container">
                 <div class="login-card">
-                    <h2 class="login-title">教师账号管理</h2>
+                    <h2 class="login-title">超级管理员</h2>
                     <div id="admin-login-form" class="login-form">
                         <input id="admin-username" class="input-field" placeholder="管理员账号" autocomplete="username">
                         <input id="admin-password" class="input-field" type="password" placeholder="管理员密码" autocomplete="current-password">
                         <button id="admin-login-btn" class="btn-primary">管理员登录</button>
                     </div>
-                    <div id="admin-teacher-form" class="login-form hidden">
-                        <input id="admin-teacher-name" class="input-field" placeholder="教师姓名（不可重复）">
-                        <input id="admin-teacher-school" class="input-field" placeholder="学校（选填）">
-                        <input id="admin-teacher-password" class="input-field" type="password" placeholder="教师密码（至少12位）" autocomplete="new-password">
-                        <input id="admin-teacher-confirm" class="input-field" type="password" placeholder="确认教师密码" autocomplete="new-password">
-                        <button id="admin-add-teacher-btn" class="btn-primary">新增教师</button>
-                        <div id="admin-teacher-list"></div>
-                        <button class="login-back" onclick="adminLogout()">退出管理员</button>
-                    </div>
                     <button class="login-back" onclick="showLoginPage()">← 返回教师登录</button>
                 </div>
+            </div>
+            <div id="admin-dashboard" class="admin-shell hidden">
+                <div class="admin-header">
+                    <div><h1>学校管理后台</h1><p>教师、班级和学生</p></div>
+                    <button class="btn-secondary" onclick="adminLogout()">退出管理员</button>
+                </div>
+                <div id="admin-stats" class="admin-stats"></div>
+                <div class="admin-tabs">
+                    <button id="admin-tab-teachers" class="active" onclick="setAdminTab('teachers')">教师</button>
+                    <button id="admin-tab-classes" onclick="setAdminTab('classes')">班级</button>
+                    <button id="admin-tab-students" onclick="setAdminTab('students')">学生</button>
+                </div>
+                <div id="admin-content" class="admin-content"></div>
             </div>
         </div>
 
@@ -123,7 +127,8 @@
         <div id="toast" class="toast hidden"></div>
     </div>
 
-    <script src="/js/api.js?v=20"></script>
-    <script src="/js/app.js?v=20"></script>
+    <script src="/js/api.js?v=21"></script>
+    <script src="/js/app.js?v=21"></script>
+    <script src="/js/admin.js?v=21"></script>
 </body>
 </html>

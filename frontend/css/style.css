@@ -1406,3 +1406,210 @@ select.input-field option {
     from { opacity: 0; transform: translateY(12px); }
     to { opacity: 1; transform: translateY(0); }
 }
+
+/* School administrator dashboard */
+#app.admin-wide {
+    max-width: none;
+    box-shadow: none;
+}
+
+#admin-login-panel {
+    margin: 10vh auto 0;
+}
+
+.admin-shell {
+    max-width: 1100px;
+    min-height: 100vh;
+    margin: 0 auto;
+    padding: 28px 20px 56px;
+}
+
+.admin-header,
+.admin-section-head,
+.admin-row-main,
+.admin-pager {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.admin-header h1 {
+    font-size: 27px;
+    margin: 0;
+}
+
+.admin-header p,
+.admin-note,
+.admin-row-sub {
+    color: var(--gray-4);
+    font-size: 14px;
+}
+
+.admin-header .btn-secondary,
+.admin-section-head .btn-primary {
+    width: auto;
+    height: 38px;
+    padding: 0 16px;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.admin-stats {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 12px;
+    margin: 24px 0;
+}
+
+.admin-stat,
+.admin-row {
+    background: var(--white);
+    border: 1px solid var(--gray-2);
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.admin-stat strong,
+.admin-stat span {
+    display: block;
+}
+
+.admin-stat strong {
+    font-size: 25px;
+    color: var(--primary);
+}
+
+.admin-stat span {
+    color: var(--gray-4);
+    font-size: 13px;
+    margin-top: 4px;
+}
+
+.admin-tabs {
+    display: flex;
+    gap: 8px;
+    border-bottom: 1px solid var(--gray-2);
+    margin-bottom: 20px;
+}
+
+.admin-tabs button,
+.admin-actions button,
+.admin-pager button {
+    border: 0;
+    background: transparent;
+    color: var(--gray-4);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 9px 12px;
+}
+
+.admin-tabs button.active {
+    color: var(--primary);
+    border-bottom: 2px solid var(--primary);
+    font-weight: 700;
+}
+
+.admin-section-head {
+    margin-bottom: 16px;
+}
+
+.admin-section-head h2 {
+    font-size: 20px;
+    margin: 0;
+}
+
+.admin-search {
+    background: var(--white);
+}
+
+.admin-row {
+    margin-bottom: 10px;
+}
+
+.admin-row-main {
+    justify-content: flex-start;
+}
+
+.admin-row-main strong {
+    font-size: 16px;
+}
+
+.admin-row-sub {
+    margin: 8px 0;
+}
+
+.admin-status {
+    padding: 3px 8px;
+    border-radius: 20px;
+    font-size: 12px;
+}
+
+.admin-status.enabled {
+    color: #176b42;
+    background: #e5f6ec;
+}
+
+.admin-status.disabled {
+    color: #a34437;
+    background: #fff0eb;
+}
+
+.admin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-left: -12px;
+}
+
+.admin-actions button,
+.admin-pager button {
+    color: var(--primary);
+}
+
+.admin-pager button:disabled {
+    color: var(--gray-3);
+    cursor: default;
+}
+
+.admin-empty {
+    padding: 36px;
+    text-align: center;
+    color: var(--gray-4);
+}
+
+.admin-student-filters {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.admin-pager {
+    font-size: 13px;
+    color: var(--gray-4);
+}
+
+.admin-textarea {
+    min-height: 90px;
+    padding: 12px 16px;
+    resize: vertical;
+}
+
+.admin-code {
+    padding: 18px;
+    margin: 16px 0;
+    border-radius: 10px;
+    background: var(--gray-1);
+    text-align: center;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 680px) {
+    .admin-shell { padding: 18px 14px 36px; }
+    .admin-header h1 { font-size: 21px; }
+    .admin-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .admin-student-filters { grid-template-columns: 1fr; gap: 0; }
+}

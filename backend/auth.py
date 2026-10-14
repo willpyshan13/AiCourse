@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 import datetime
+import hashlib
+import hmac
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -36,6 +40,13 @@ def verify_token(token: str) -> dict:
         )
 
 
+def teacher_token_version(password_hash: str | None) -> str:
+    """Bind a teacher token to the current password without exposing the hash."""
+    return hmac.new(
+        SECRET_KEY.encode(), (password_hash or "").encode(), hashlib.sha256
+    ).hexdigest()
+
+
 def get_current_teacher(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
@@ -50,6 +61,11 @@ def get_current_teacher(
     teacher = db.get(Teacher, teacher_id)
     if not teacher or not teacher.authorized:
         raise HTTPException(status_code=401, detail="教师账号不可用")
+    if not hmac.compare_digest(
+        payload.get("password_version", ""),
+        teacher_token_version(teacher.password_hash),
+    ):
+        raise HTTPException(status_code=401, detail="登录凭证已失效，请重新登录")
     return payload
 
 

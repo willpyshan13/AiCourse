@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import Teacher, Student, Team, Class_
 from schemas import WeChatLoginRequest, TokenResponse, TeacherInfo, StudentLoginRequest, StudentTokenResponse
-from auth import create_access_token, get_current_teacher, create_student_token
+from auth import create_access_token, get_current_teacher, create_student_token, teacher_token_version
 from passwords import verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["认证"])
@@ -20,7 +20,11 @@ def wechat_login(req: WeChatLoginRequest, response: Response, request: Request, 
     teacher = matches[0]
     if not teacher.authorized or not verify_password(req.password, teacher.password_hash):
         raise HTTPException(status_code=401, detail="姓名或密码错误")
-    token = create_access_token({"sub": str(teacher.id), "role": "teacher"})
+    token = create_access_token({
+        "sub": str(teacher.id),
+        "role": "teacher",
+        "password_version": teacher_token_version(teacher.password_hash),
+    })
     response.set_cookie(
         "teacher_media", token, max_age=30 * 24 * 3600, httponly=True,
         secure=request.url.scheme == "https", samesite="strict", path="/uploads/practices",

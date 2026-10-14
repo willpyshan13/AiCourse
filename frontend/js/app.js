@@ -82,39 +82,10 @@ $('admin-login-btn').addEventListener('click', async function() {
     const result = await adminApi.login(username, password);
     adminToken = result.access_token;
     $('admin-password').value = '';
-    $('admin-login-form').classList.add('hidden');
-    $('admin-teacher-form').classList.remove('hidden');
-    await refreshAdminTeachers();
-  } catch (e) {
-    showToast(e.message);
-  } finally {
-    this.disabled = false;
-  }
-});
-
-async function refreshAdminTeachers() {
-  const teachers = await adminApi.teachers();
-  $('admin-teacher-list').innerHTML = '<div style="font-weight:600;margin:16px 0 8px;">现有教师</div>' +
-    teachers.map(t => '<div style="padding:6px 0;">' + escapeHtml(t.name) +
-      (t.school ? ' · ' + escapeHtml(t.school) : '') + '</div>').join('');
-}
-
-$('admin-add-teacher-btn').addEventListener('click', async function() {
-  const name = $('admin-teacher-name').value.trim();
-  const school = $('admin-teacher-school').value.trim();
-  const password = $('admin-teacher-password').value;
-  const confirmation = $('admin-teacher-confirm').value;
-  if (!name || password.length < 12) { showToast('请填写姓名和至少12位密码'); return; }
-  if (password !== confirmation) { showToast('两次密码不一致'); return; }
-  this.disabled = true;
-  try {
-    await adminApi.addTeacher(name, school, password);
-    $('admin-teacher-name').value = '';
-    $('admin-teacher-school').value = '';
-    $('admin-teacher-password').value = '';
-    $('admin-teacher-confirm').value = '';
-    await refreshAdminTeachers();
-    showToast('教师已创建');
+    $('admin-login-panel').classList.add('hidden');
+    $('admin-dashboard').classList.remove('hidden');
+    $('app').classList.add('admin-wide');
+    await loadAdminDashboard();
   } catch (e) {
     showToast(e.message);
   } finally {
@@ -124,8 +95,10 @@ $('admin-add-teacher-btn').addEventListener('click', async function() {
 
 function adminLogout() {
   adminToken = '';
-  $('admin-login-form').classList.remove('hidden');
-  $('admin-teacher-form').classList.add('hidden');
+  $('admin-login-panel').classList.remove('hidden');
+  $('admin-dashboard').classList.add('hidden');
+  $('app').classList.remove('admin-wide');
+  $('admin-content').innerHTML = '';
   showLoginPage();
 }
 
