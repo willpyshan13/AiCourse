@@ -1,0 +1,21 @@
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.env
+.env.*
+!.env.example
+
+# Local classroom records and generated media
+data/
+backend/data
+uploads/*
+!uploads/学生导入模板.xlsx
+
+# Local notes and school-specific import scripts
+.workbuddy/
+backend/seed_liaojuan.py
+backend/add_liaojuan_2024_4.py
+backend/add_liaojuan_2024_4_practices.py

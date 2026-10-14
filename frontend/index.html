@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>智慧综合实践课堂</title>
+    <link rel="stylesheet" href="/css/style.css?v=20">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+</head>
+<body>
+    <div id="app">
+
+        <!-- Loading -->
+        <div id="loading-screen" class="page">
+            <div class="loading-content">
+                <div class="loading-icon">☘️</div>
+                <h2>智慧综合实践课堂</h2>
+                <p>加载中...</p>
+            </div>
+        </div>
+
+        <!-- Homepage (public) -->
+        <div id="home-page" class="page hidden">
+            <header class="home-header">
+                <div class="home-header-inner">
+                    <div class="home-logo">
+                        <span class="home-logo-icon">☘️</span>
+                        <span class="home-logo-text">智慧综合实践课堂</span>
+                    </div>
+                    <button class="home-login-btn" onclick="showLoginPage()">教师登录</button>
+                </div>
+            </header>
+
+            <section class="home-hero">
+                <div class="home-hero-inner">
+                    <h1>综合实践 · 见证成长</h1>
+                    <p>记录综合实践作业 · 小组协作管理 · AI 智能分析</p>
+                </div>
+            </section>
+
+            <section class="featured-section">
+                <div class="featured-section-inner">
+                    <h2 class="featured-title">优秀实践展示</h2>
+                    <p class="featured-subtitle">最新综合实践活动成果</p>
+                    <div id="featured-practices" class="practice-grid">
+                        <div class="empty-state"><p>加载中...</p></div>
+                    </div>
+                </div>
+            </section>
+
+            <footer class="home-footer">
+                <div class="home-footer-inner">
+                    <p>智慧综合实践课堂 © 2026</p>
+                </div>
+            </footer>
+        </div>
+
+        <!-- Login Page (clean redesign) -->
+        <div id="login-page" class="page hidden">
+            <div class="login-container">
+                <div class="login-card">
+                    <div class="login-logo">☘️</div>
+                    <h2 class="login-title">智慧综合实践课堂</h2>
+                    <p class="login-subtitle">教师登录</p>
+                    <div class="login-form">
+                        <input type="text" id="login-name" placeholder="请输入教师姓名" class="input-field" autocomplete="off">
+                        <input type="password" id="login-password" placeholder="请输入密码" class="input-field" autocomplete="current-password">
+                        <button id="login-btn" class="btn-primary">登录</button>
+                        <button class="login-back" onclick="showPage('admin-page')">管理员添加教师</button>
+
+                        <button class="login-back" onclick="showHomePage()">← 返回首页</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Administrator teacher management -->
+        <div id="admin-page" class="page hidden">
+            <div class="login-container">
+                <div class="login-card">
+                    <h2 class="login-title">教师账号管理</h2>
+                    <div id="admin-login-form" class="login-form">
+                        <input id="admin-username" class="input-field" placeholder="管理员账号" autocomplete="username">
+                        <input id="admin-password" class="input-field" type="password" placeholder="管理员密码" autocomplete="current-password">
+                        <button id="admin-login-btn" class="btn-primary">管理员登录</button>
+                    </div>
+                    <div id="admin-teacher-form" class="login-form hidden">
+                        <input id="admin-teacher-name" class="input-field" placeholder="教师姓名（不可重复）">
+                        <input id="admin-teacher-school" class="input-field" placeholder="学校（选填）">
+                        <input id="admin-teacher-password" class="input-field" type="password" placeholder="教师密码（至少12位）" autocomplete="new-password">
+                        <input id="admin-teacher-confirm" class="input-field" type="password" placeholder="确认教师密码" autocomplete="new-password">
+                        <button id="admin-add-teacher-btn" class="btn-primary">新增教师</button>
+                        <div id="admin-teacher-list"></div>
+                        <button class="login-back" onclick="adminLogout()">退出管理员</button>
+                    </div>
+                    <button class="login-back" onclick="showLoginPage()">← 返回教师登录</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main App (authenticated) -->
+        <div id="main-page" class="page hidden">
+            <div id="tab-bar" class="tab-bar">
+                <div class="tab-item" data-tab="home">
+                    <span class="tab-icon">🏠</span>
+                    <span>首页</span>
+                </div>
+                <div class="tab-item active" data-tab="dashboard">
+                    <span class="tab-icon">📚</span>
+                    <span>我的班级</span>
+                </div>
+                <div class="tab-item" data-tab="profile">
+                    <span class="tab-icon">👤</span>
+                    <span>我的</span>
+                </div>
+            </div>
+            <div id="page-content">
+            </div>
+        </div>
+
+        <div id="toast" class="toast hidden"></div>
+    </div>
+
+    <script src="/js/api.js?v=20"></script>
+    <script src="/js/app.js?v=20"></script>
+</body>
+</html>
