@@ -58,7 +58,9 @@ class Student(Base):
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=True)
     name = Column(String(64), nullable=False)
     pin_hash = Column(String(256), nullable=True)
+    must_change_password = Column(Boolean, default=False, nullable=False)
     student_no = Column(String(32), default="")
+    phone = Column(String(20), default="", nullable=False)
     grade = Column(String(32), default="")
     birth_date = Column(Date, nullable=True)
     role = Column(String(64), default="")  # 职责: 动手实践/记录数据/分析数据/查阅资料等
@@ -73,6 +75,7 @@ class Practice(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
+    submitted_by_student_id = Column(Integer, ForeignKey("students.id"), nullable=True)
     title = Column(String(128), nullable=False)
     content = Column(Text, default="")
     images = Column(JSON, default=list)  # list of file paths

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import secrets
 from datetime import date
 from typing import Optional
 
@@ -19,6 +18,7 @@ from config import ADMIN_PASSWORD, ADMIN_USERNAME, JWT_SECRET_KEY
 from database import get_db
 from models import Class_, Evaluation, MemberRecord, Practice, Student, Teacher, Team
 from passwords import hash_password
+from student_passwords import reset_student_password
 
 router = APIRouter(prefix="/api/admin", tags=["管理员"])
 bearer = HTTPBearer()
@@ -56,6 +56,7 @@ class AdminStudentData(BaseModel):
     class_id: int
     name: str
     student_no: str = ""
+    phone: str = ""
     grade: str = ""
     birth_date: Optional[date] = None
     role: str = ""
@@ -140,6 +141,7 @@ def _student_response(student: Student) -> dict:
         "team_id": student.team_id,
         "name": student.name,
         "student_no": student.student_no or "",
+        "phone": student.phone or "",
         "grade": student.grade or "",
         "birth_date": student.birth_date.isoformat() if student.birth_date else None,
         "role": student.role or "",
@@ -302,6 +304,7 @@ def list_students(
         students = students.filter(or_(
             Student.name.contains(query.strip()),
             Student.student_no.contains(query.strip()),
+            Student.phone.contains(query.strip()),
         ))
     total = students.count()
     items = students.options(selectinload(Student.team)).order_by(Student.id).offset(offset).limit(limit).all()
@@ -317,6 +320,7 @@ def add_student(body: AdminStudentData, db: Session = Depends(get_db)) -> dict:
         team_id=team.id if team else None,
         name=name,
         student_no=_optional_text(body.student_no, "学号", 32),
+        phone=_optional_text(body.phone, "手机号", 20),
         grade=_optional_text(body.grade, "年级", 32),
         birth_date=body.birth_date,
         role=_optional_text(body.role, "职责", 64),
@@ -337,6 +341,7 @@ def update_student(
     _, team = _student_data(db, body)
     student.name = _required_text(body.name, "学生姓名", 64)
     student.student_no = _optional_text(body.student_no, "学号", 32)
+    student.phone = _optional_text(body.phone, "手机号", 20)
     student.grade = _optional_text(body.grade, "年级", 32)
     student.birth_date = body.birth_date
     student.role = _optional_text(body.role, "职责", 64)
@@ -363,9 +368,12 @@ def delete_unreferenced_student(student_id: int, db: Session = Depends(get_db)) 
 
 
 @router.post("/students/{student_id}/login-code", dependencies=[Depends(require_admin)])
+@router.post("/students/{student_id}/password", dependencies=[Depends(require_admin)])
 def reset_student_login_code(student_id: int, db: Session = Depends(get_db)) -> dict:
     student = _student(db, student_id)
-    code = secrets.token_urlsafe(12)
-    student.pin_hash = hash_password(code)
+    try:
+        code = reset_student_password(student)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from None
     db.commit()
-    return {"code": code}
+    return {"code": code, "password": code}

@@ -169,7 +169,8 @@ def create_student(
     student = Student(
         class_id=class_id,
         name=req.name,
-        student_no=req.student_no,
+        student_no=req.student_no.strip(),
+        phone=req.phone.strip(),
         grade=req.grade,
         birth_date=req.birth_date,
         role=req.role,
@@ -189,7 +190,7 @@ def import_excel(
 ):
     """
     从 Excel 导入学生数据。
-    期望表头: 姓名, 学号, 年级, 出生年月, 小组, 职责
+    期望表头: 姓名, 学号, 年级, 出生年月, 小组, 职责, 手机号
     """
     if not file.filename or not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="仅支持 .xlsx 文件")
@@ -229,6 +230,7 @@ def import_excel(
             birth = row[3] if len(row) > 3 else None
             team_name = str(row[4]).strip() if len(row) > 4 and row[4] else ""
             role = str(row[5]).strip() if len(row) > 5 and row[5] else ""
+            phone = str(row[6]).strip() if len(row) > 6 and row[6] else ""
 
             if not name:
                 continue
@@ -261,6 +263,7 @@ def import_excel(
                 team_id=team_id,
                 name=name,
                 student_no=student_no,
+                phone=phone,
                 grade=grade,
                 birth_date=birth_date,
                 role=role,

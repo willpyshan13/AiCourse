@@ -14,6 +14,7 @@ from config import JWT_SECRET_KEY
 SECRET_KEY = JWT_SECRET_KEY
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 30
+STUDENT_TOKEN_VERSION = 2
 
 security = HTTPBearer()
 
@@ -69,11 +70,13 @@ def get_current_teacher(
     return payload
 
 
-def create_student_token(student_id: int, team_id: int) -> str:
+def create_student_token(student_id: int, team_id: int, password_hash: str) -> str:
     return create_access_token({
         "sub": str(student_id),
         "role": "student",
         "team_id": str(team_id),
+        "password_version": teacher_token_version(password_hash),
+        "auth_version": STUDENT_TOKEN_VERSION,
     })
 
 
@@ -84,6 +87,8 @@ def get_current_student(
     payload = verify_token(credentials.credentials)
     if payload.get("role") != "student":
         raise HTTPException(status_code=401, detail="需要学生身份")
+    if payload.get("auth_version") != STUDENT_TOKEN_VERSION:
+        raise HTTPException(status_code=401, detail="登录凭证已失效，请重新登录")
     try:
         student_id = int(payload["sub"])
     except (KeyError, ValueError, TypeError):
@@ -91,4 +96,22 @@ def get_current_student(
     student = db.get(Student, student_id)
     if not student:
         raise HTTPException(status_code=404, detail="学生不存在")
-    return {"student_id": student.id, "team_id": student.team_id, "name": student.name}
+    if not student.pin_hash or not hmac.compare_digest(
+        payload.get("password_version", ""),
+        teacher_token_version(student.pin_hash),
+    ):
+        raise HTTPException(status_code=401, detail="登录凭证已失效，请重新登录")
+    if str(student.team_id) != payload.get("team_id"):
+        raise HTTPException(status_code=401, detail="学生所属小组已变更，请重新登录")
+    return {
+        "student_id": student.id,
+        "team_id": student.team_id,
+        "name": student.name,
+        "must_change_password": student.must_change_password,
+    }
+
+
+def get_current_active_student(student: dict = Depends(get_current_student)) -> dict:
+    if student["must_change_password"]:
+        raise HTTPException(status_code=403, detail="请先修改初始密码")
+    return student

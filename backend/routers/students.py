@@ -5,23 +5,25 @@ from models import Student
 from schemas import StudentInfo, StudentUpdate
 from auth import get_current_teacher
 from ownership import owned_student, owned_team
-from passwords import hash_password
-import secrets
+from student_passwords import reset_student_password
 
 router = APIRouter(prefix="/api/students", tags=["学生管理"])
 
 
 @router.post("/{student_id}/login-code")
+@router.post("/{student_id}/password")
 def reset_student_login_code(
     student_id: int,
     payload: dict = Depends(get_current_teacher),
     db: Session = Depends(get_db),
 ):
     student = owned_student(db, student_id, int(payload["sub"]))
-    code = secrets.token_urlsafe(12)
-    student.pin_hash = hash_password(code)
+    try:
+        code = reset_student_password(student)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from None
     db.commit()
-    return {"code": code}
+    return {"code": code, "password": code}
 
 
 @router.get("/{student_id}", response_model=StudentInfo)
@@ -54,6 +56,8 @@ def update_student(
         student.team_id = req.team_id
     if req.role is not None:
         student.role = req.role
+    if req.phone is not None:
+        student.phone = req.phone.strip()
 
     db.commit()
     db.refresh(student)

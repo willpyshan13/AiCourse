@@ -1,10 +1,14 @@
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, HTTPException, Response, Request
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Teacher, Student, Team, Class_
-from schemas import WeChatLoginRequest, TokenResponse, TeacherInfo, StudentLoginRequest, StudentTokenResponse
-from auth import create_access_token, get_current_teacher, create_student_token, teacher_token_version
-from passwords import verify_password
+from schemas import WeChatLoginRequest, TokenResponse, TeacherInfo, StudentLoginRequest, StudentTokenResponse, StudentPasswordChange
+from auth import create_access_token, get_current_teacher, get_current_student, create_student_token, teacher_token_version
+from passwords import hash_password, verify_password
+from student_passwords import default_student_password, verify_student_password
 
 router = APIRouter(prefix="/api/auth", tags=["认证"])
 
@@ -55,21 +59,49 @@ def get_me(
 
 
 @router.post("/student-login", response_model=StudentTokenResponse)
-def student_login(req: StudentLoginRequest, db: Session = Depends(get_db)):
-    """学生登录 — 输入姓名，绑定到对应小组"""
+def student_login(
+    req: StudentLoginRequest, response: Response, request: Request,
+    db: Session = Depends(get_db),
+) -> StudentTokenResponse:
+    """Log in with a student number or a family phone number within a team."""
     team = db.query(Team).filter(Team.id == req.team_id).first()
     if not team:
         raise HTTPException(status_code=404, detail="小组不存在")
 
+    identifier = req.identifier.strip()
+    if not identifier or not req.password:
+        raise HTTPException(status_code=401, detail="学号或手机号、密码错误")
     students = db.query(Student).filter(
         Student.team_id == req.team_id,
-        Student.name == req.name,
+        or_(Student.student_no == identifier, Student.phone == identifier),
     ).all()
-    if len(students) != 1 or not students[0].pin_hash or not verify_password(req.pin, students[0].pin_hash):
-        raise HTTPException(status_code=401, detail="学生姓名或口令错误")
-    student = students[0]
+    matches = [
+        student for student in students
+        if verify_student_password(student, req.password)
+    ]
+    if len(matches) != 1:
+        if len(matches) > 1:
+            detail = (
+                "同组多人共用此手机号，请改用学号登录"
+                if all(student.phone == identifier for student in matches)
+                else "学号重复，请联系老师核对"
+            )
+            raise HTTPException(status_code=409, detail=detail)
+        raise HTTPException(status_code=401, detail="学号或手机号、密码错误")
+    student = matches[0]
+    initial_password = default_student_password(student.phone)
+    if not student.pin_hash:
+        student.pin_hash = hash_password(req.password)
+    if initial_password == req.password:
+        student.must_change_password = True
+    if db.is_modified(student):
+        db.commit()
 
-    token = create_student_token(student.id, team.id)
+    token = create_student_token(student.id, team.id, student.pin_hash)
+    response.set_cookie(
+        "student_media", token, max_age=30 * 24 * 3600, httponly=True,
+        secure=request.url.scheme == "https", samesite="strict", path="/uploads/practices",
+    )
     return StudentTokenResponse(
         access_token=token,
         student_id=student.id,
@@ -77,4 +109,46 @@ def student_login(req: StudentLoginRequest, db: Session = Depends(get_db)):
         team_id=team.id,
         team_name=team.name,
         class_name=team.class_.name,
+        must_change_password=student.must_change_password,
     )
+
+
+@router.post("/student-password")
+def change_student_password(
+    body: StudentPasswordChange,
+    response: Response,
+    request: Request,
+    student: dict = Depends(get_current_student),
+    db: Session = Depends(get_db),
+) -> dict:
+    account = db.get(Student, student["student_id"])
+    if not verify_password(body.current_password, account.pin_hash):
+        raise HTTPException(status_code=400, detail="当前密码错误")
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="新密码至少需要8位")
+    account.pin_hash = hash_password(body.new_password)
+    account.must_change_password = False
+    db.commit()
+    token = create_student_token(account.id, account.team_id, account.pin_hash)
+    response.set_cookie(
+        "student_media", token, max_age=30 * 24 * 3600, httponly=True,
+        secure=request.url.scheme == "https", samesite="strict", path="/uploads/practices",
+    )
+    return {
+        "access_token": token,
+        "student_id": account.id,
+        "team_id": account.team_id,
+        "name": account.name,
+        "must_change_password": False,
+    }
+
+
+@router.get("/student-me")
+def get_student_me(student: dict = Depends(get_current_student)) -> dict:
+    return student
+
+
+@router.post("/student-logout")
+def student_logout(response: Response) -> dict:
+    response.delete_cookie("student_media", path="/uploads/practices")
+    return {"ok": True}

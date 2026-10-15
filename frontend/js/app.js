@@ -240,7 +240,7 @@ async function renderClassDetail() {
       '<div style="text-align:center;padding:20px;">' +
       '<div style="font-size:36px;margin-bottom:8px;">📊</div>' +
       '<p style="font-size:15px;color:var(--primary-dark);font-weight:600;">通过 Excel 导入学生数据</p>' +
-      '<p style="font-size:12px;color:var(--primary);margin-top:4px;opacity:0.8;">表头: 姓名, 学号, 年级, 出生年月, 小组, 职责</p>' +
+      '<p style="font-size:12px;color:var(--primary);margin-top:4px;opacity:0.8;">表头: 姓名, 学号, 年级, 出生年月, 小组, 职责, 手机号</p>' +
       '</div>' +
       '<input type="file" id="excel-input" accept=".xlsx,.xls" style="display:none" onchange="importExcel(event)">' +
       '</div>';
@@ -351,7 +351,7 @@ async function renderTeamDetail() {
           return '<div class="practice-item fade-in" onclick="showPracticeDetail(' + p.id + ')">' +
             (p.images && p.images.length > 0 ? '<div class="practice-images" style="margin-top:0;margin-bottom:8px;">' + p.images.slice(0,3).map(function(img) { return '<img src=\"' + imgUrl(img) + '" onclick="showImageLightbox(this.src)" style="width:72px;height:72px;border-radius:8px;object-fit:cover;">'; }).join('') + '</div>' : '') +
             '<div class="practice-title">' + escapeHtml(p.title) + '</div>' +
-            '<div class="practice-meta">' + formatDate(p.created_at) + ' · ' + p.member_count + '人参与</div>' +
+            '<div class="practice-meta">' + formatDate(p.created_at) + ' · ' + p.member_count + '人参与' + (p.submitted_by_student_id ? ' · 家长提交' : '') + '</div>' +
             '<button class="btn-secondary" style="margin:8px 0;" onclick="event.stopPropagation();togglePracticePublication(' + p.id + ',' + (!p.published) + ')">' + (p.published ? '取消公开' : '公开作品') + '</button>' +
             '<div class="practice-content">' + escapeHtml(p.content) + '</div>' +
             (p.ai_summary ? '<div class="practice-analysis">💡 ' + escapeHtml(p.ai_summary) + '</div>' : '') +
@@ -468,17 +468,26 @@ async function showStudentDetail(studentId) {
       '<div><div style="font-size:12px;color:#8E8E93;text-transform:uppercase;letter-spacing:0.5px;">出生年月</div><div style="font-size:16px;font-weight:600;margin-top:4px;">' + (s.birth_date ? formatDate(s.birth_date) : '未设置') + '</div></div>' +
       '<div style="grid-column:1/-1;"><div style="font-size:12px;color:#8E8E93;text-transform:uppercase;letter-spacing:0.5px;">小组职责</div><div style="font-size:16px;font-weight:600;margin-top:4px;">' + escapeHtml(s.role || '未分配') + '</div></div>' +
       '</div>' +
-      '<button class="btn-secondary" style="margin-top:16px;" onclick="resetStudentLoginCode(' + s.id + ')">生成学生登录口令</button>' +
+      '<div style="margin-top:16px;"><label>家长手机号</label><input class="input-field" id="student-phone" inputmode="tel" maxlength="20" value="' + escapeHtml(s.phone || '') + '" placeholder="可用于登录"></div>' +
+      '<button class="btn-secondary" onclick="saveStudentPhone(' + s.id + ')">保存手机号</button> ' +
+      '<button class="btn-secondary" onclick="resetStudentLoginCode(' + s.id + ')">重置登录密码</button>' +
       '</div>';
   } catch (e) {
     $('student-detail-content').innerHTML = '<p>⚠️ ' + e.message + '</p>';
   }
 }
 
+async function saveStudentPhone(studentId) {
+  try {
+    await studentApi.update(studentId, { phone: $('student-phone').value.trim() });
+    showToast('手机号已保存');
+  } catch (e) { showToast(e.message); }
+}
+
 async function resetStudentLoginCode(studentId) {
   try {
-    const result = await studentApi.resetLoginCode(studentId);
-    window.prompt('请复制并私下告知学生，关闭后无法再次查看：', result.code);
+    await studentApi.resetLoginCode(studentId);
+    showToast('已重置为手机号后6位，登录后必须修改');
   } catch (e) {
     showToast(e.message);
   }
@@ -981,6 +990,19 @@ async function renderTeamPublicPage(teamId) {
   try {
     var data = await api('/teams/public/' + teamId);
     var student = getStudentInfo();
+    if (student && student.team_id !== teamId) student = null;
+    if (student) {
+      try {
+        var currentStudent = await studentApi.me();
+        student = {
+          student_id: currentStudent.student_id,
+          name: currentStudent.name,
+          team_id: currentStudent.team_id,
+          must_change_password: currentStudent.must_change_password
+        };
+        localStorage.setItem('studentInfo', JSON.stringify(student));
+      } catch (error) { student = null; }
+    }
     var h = '';
     // ── Team Header ──
     h += '<div style="background:var(--white);padding:16px;border-bottom:0.5px solid var(--gray-2);position:sticky;top:0;z-index:10;backdrop-filter:blur(20px);">';
@@ -1005,14 +1027,21 @@ async function renderTeamPublicPage(teamId) {
     if (student) {
       h += '<div style="background:var(--success-light);border-radius:14px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;border:0.5px solid rgba(52,199,89,0.15);">';
       h += '<div style="display:flex;align-items:center;gap:8px;"><span style="width:36px;height:36px;border-radius:50%;background:var(--success);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;">👤</span><div><div style="font-size:14px;font-weight:600;">' + escapeHtml(student.name) + '</div><div style="font-size:12px;color:var(--success);">已登录</div></div></div>';
-      h += '<button onclick="localStorage.removeItem(\'studentToken\');localStorage.removeItem(\'studentInfo\');renderTeamPublicPage(' + teamId + ')" style="padding:6px 16px;border-radius:16px;border:none;background:#fff;color:var(--gray-5);font-size:12px;cursor:pointer;box-shadow:var(--shadow-sm);">退出</button></div>';
+      h += '<button onclick="studentLogout(' + teamId + ')" style="padding:6px 16px;border-radius:16px;border:none;background:#fff;color:var(--gray-5);font-size:12px;cursor:pointer;box-shadow:var(--shadow-sm);">退出</button></div>';
+      if (student.must_change_password) {
+        h += '<div class="card" style="cursor:default;margin-bottom:16px;"><b>请先修改初始密码</b><p style="margin:8px 0;">修改后才能上传实践记录和参与评价。</p><button class="btn-primary" onclick="showStudentPasswordModal(' + teamId + ', true)">立即修改</button></div>';
+      } else {
+        h += '<div style="display:flex;gap:8px;margin-bottom:16px;"><button class="btn-primary" onclick="showStudentSubmissionModal(' + teamId + ')">上传实践记录或图片</button><button class="btn-secondary" onclick="showStudentPasswordModal(' + teamId + ')">修改密码</button></div>';
+        h += '<div id="student-submissions" style="margin-bottom:16px;">加载我的提交...</div>';
+      }
     } else {
       h += '<div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow-card);border:0.5px solid rgba(0,0,0,0.03);">';
-      h += '<div style="font-size:14px;font-weight:700;margin-bottom:10px;">🔑 学生登录</div>';
+      h += '<div style="font-size:14px;font-weight:700;margin-bottom:10px;">🔑 学生 / 家长登录</div>';
       h += '<div style="display:flex;gap:8px;">';
-      h += '<input id="student-login-name" class="input-field" placeholder="输入你的姓名" style="flex:1;margin-bottom:0;height:42px;">';
-      h += '<input id="student-login-pin" type="password" class="input-field" placeholder="个人口令" style="flex:1;margin-bottom:0;height:42px;">';
-      h += '<button class="btn-primary" style="width:auto;padding:0 24px;height:42px;font-size:14px;" onclick="studentLogin(' + teamId + ')">登录</button></div></div>';
+      h += '<input id="student-login-identifier" class="input-field" placeholder="学号或手机号" style="flex:1;margin-bottom:0;height:42px;">';
+      h += '<input id="student-login-password" type="password" class="input-field" placeholder="手机号后6位或自设密码" style="flex:1;margin-bottom:0;height:42px;">';
+      h += '<button class="btn-primary" style="width:auto;padding:0 24px;height:42px;font-size:14px;" onclick="studentLogin(' + teamId + ')">登录</button></div>';
+      h += '<p style="font-size:12px;color:#8E8E93;margin-top:8px;">忘记密码请联系老师重置。</p></div>';
     }
 
     // ── Practices ──
@@ -1036,7 +1065,7 @@ async function renderTeamPublicPage(teamId) {
         }
         if (p.ai_summary) h += '<div class="practice-analysis">💡 ' + escapeHtml(p.ai_summary) + '</div>';
         // ── Evaluation section for logged-in students ──
-        if (student) {
+        if (student && !student.must_change_password) {
           h += '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">';
           h += '<button class="btn-secondary" style="font-size:12px;padding:4px 12px;" onclick="showStudentEvalModal(' + p.id + ',' + teamId + ',\'self\')">📝 自评</button>';
           h += '<button class="btn-secondary" style="font-size:12px;padding:4px 12px;" onclick="showStudentEvalModal(' + p.id + ',' + teamId + ',\'peer\')">👥 互评</button>';
@@ -1050,9 +1079,10 @@ async function renderTeamPublicPage(teamId) {
     }
     h += '</div>';
     area.innerHTML = h;
+    if (student && !student.must_change_password) loadStudentSubmissions(teamId);
 
     // Load evaluations if student logged in
-    if (student) {
+    if (student && !student.must_change_password) {
       for (var i = 0; i < data.practices.length; i++) {
         loadEvalSummary(data.practices[i].id, student.student_id);
       }
@@ -1076,23 +1106,107 @@ function shareTeamUrl(teamId) {
 }
 
 async function studentLogin(teamId) {
-  var nameInput = document.getElementById('student-login-name');
-  var name = nameInput.value.trim();
-  if (!name) { showToast('请输入姓名'); return; }
+  var identifier = $('student-login-identifier').value.trim();
+  if (!identifier) { showToast('请输入学号或手机号'); return; }
   try {
-    var res = await studentApi.login(teamId, name, $('student-login-pin').value);
-    setStudentInfo(res.access_token, { student_id: res.student_id, name: res.name, team_id: res.team_id });
-    showToast('登录成功');
-    renderTeamPublicPage(teamId);
+    var res = await studentApi.login(teamId, identifier, $('student-login-password').value);
+    setStudentInfo(res.access_token, {
+      student_id: res.student_id, name: res.name, team_id: res.team_id,
+      must_change_password: res.must_change_password
+    });
+    await renderTeamPublicPage(teamId);
+    if (res.must_change_password) showStudentPasswordModal(teamId, true);
+    else showToast('登录成功');
   } catch (e) {
     showToast('登录失败: ' + e.message);
   }
+}
+
+async function studentLogout(teamId) {
+  await studentApi.logout().catch(function() {});
+  localStorage.removeItem('studentToken');
+  localStorage.removeItem('studentInfo');
+  renderTeamPublicPage(teamId);
+}
+
+async function loadStudentSubmissions(teamId) {
+  var container = $('student-submissions');
+  if (!container) return;
+  try {
+    var submissions = await studentApi.submissions(teamId);
+    container.innerHTML = '<div style="font-size:17px;font-weight:700;margin-bottom:10px;">我的提交 (' + submissions.length + ')</div>' +
+      (submissions.length ? submissions.map(function(item) {
+        return '<div class="card" style="cursor:default;margin-bottom:10px;"><b>' + escapeHtml(item.title) + '</b>' +
+          '<div style="font-size:12px;color:#636366;margin-top:4px;">' + (item.published ? '已公开' : '待老师查看') + '</div>' +
+          (item.content ? '<p style="margin-top:8px;">' + escapeHtml(item.content) + '</p>' : '') +
+          (item.images || []).map(function(path) {
+            return '<img src="/' + escapeHtml(path) + '" alt="实践图片" style="max-width:100%;max-height:180px;margin:8px 8px 0 0;border-radius:8px;">';
+          }).join('') + '</div>';
+      }).join('') : '<div style="color:#8E8E93;font-size:13px;">还没有提交记录</div>');
+  } catch (error) { container.textContent = error.message; }
+}
+
+function showStudentSubmissionModal(teamId) {
+  var overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = '<div class="modal-content"><div class="modal-header"><h3>上传实践记录</h3><button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></div>' +
+    '<input id="student-practice-title" class="input-field" maxlength="128" placeholder="活动标题">' +
+    '<textarea id="student-practice-content" class="input-field" maxlength="10000" placeholder="填写过程、观察数据或结果"></textarea>' +
+    '<input id="student-practice-files" class="input-field" type="file" accept="image/jpeg,image/png,image/webp" multiple>' +
+    '<p style="font-size:12px;color:#8E8E93;">最多9张图片，每张不超过10MB；提交后由老师查看。</p>' +
+    '<button class="btn-primary" onclick="submitStudentPractice(' + teamId + ')">提交</button></div>';
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', function(event) { if (event.target === overlay) overlay.remove(); });
+}
+
+async function submitStudentPractice(teamId) {
+  var title = $('student-practice-title').value.trim();
+  var content = $('student-practice-content').value.trim();
+  var files = Array.from($('student-practice-files').files);
+  if (!title || (!content && !files.length)) { showToast('请填写标题和内容，或上传图片'); return; }
+  try {
+    await studentApi.submit(teamId, title, content, files);
+    document.querySelector('.modal-overlay').remove();
+    showToast('已提交，等待老师查看');
+    loadStudentSubmissions(teamId);
+  } catch (error) { showToast(error.message); }
+}
+
+function showStudentPasswordModal(teamId, required) {
+  var overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = '<div class="modal-content"><div class="modal-header"><h3>' + (required ? '首次登录，请设置新密码' : '修改密码') + '</h3>' +
+    (required ? '' : '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">✕</button>') + '</div>' +
+    '<input id="student-current-password" class="input-field" type="password" placeholder="当前密码">' +
+    '<input id="student-new-password" class="input-field" type="password" placeholder="新密码（至少8位）">' +
+    '<input id="student-confirm-password" class="input-field" type="password" placeholder="再次输入新密码">' +
+    '<button class="btn-primary" onclick="changeStudentPassword(' + teamId + ')">保存新密码</button>' +
+    (required ? '<button class="btn-secondary" style="margin-top:8px;" onclick="this.closest(\'.modal-overlay\').remove();studentLogout(' + teamId + ')">退出账号</button>' : '') + '</div>';
+  document.body.appendChild(overlay);
+  if (!required) overlay.addEventListener('click', function(event) { if (event.target === overlay) overlay.remove(); });
+}
+
+async function changeStudentPassword(teamId) {
+  var current = $('student-current-password').value;
+  var next = $('student-new-password').value;
+  if (next !== $('student-confirm-password').value) { showToast('两次输入的新密码不一致'); return; }
+  try {
+    var result = await studentApi.changePassword(current, next);
+    setStudentInfo(result.access_token, {
+      student_id: result.student_id, name: result.name, team_id: result.team_id,
+      must_change_password: false
+    });
+    document.querySelector('.modal-overlay').remove();
+    await renderTeamPublicPage(teamId);
+    showToast('密码已修改');
+  } catch (error) { showToast(error.message); }
 }
 
 async function showStudentEvalModal(practiceId, teamId, mode) {
   var data = await api('/teams/public/' + teamId);
   var student = getStudentInfo();
   if (!student) { showToast('请先登录'); return; }
+  if (student.must_change_password) { showToast('请先修改初始密码'); return; }
   var members = data.members;
   var titleMap = { self: '自评', peer: '互评', teacher: '评老师' };
   var title = titleMap[mode] || '评价';

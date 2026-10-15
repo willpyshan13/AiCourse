@@ -1,6 +1,7 @@
 """Access control and publication regression tests."""
 from __future__ import annotations
 
+import io
 import os
 import tempfile
 import unittest
@@ -13,6 +14,7 @@ os.environ["ADMIN_USERNAME"] = "admin"
 os.environ["ADMIN_PASSWORD"] = "long-admin-password"
 
 from fastapi.testclient import TestClient  # noqa: E402
+from PIL import Image  # noqa: E402
 from main import app  # noqa: E402
 from database import SessionLocal  # noqa: E402
 from models import Class_, Evaluation, MemberRecord, Practice, Student, Teacher, Team  # noqa: E402
@@ -40,7 +42,10 @@ class AccessTests(unittest.TestCase):
             db.flush()
             practice = Practice(team_id=team.id, title="Private work")
             db.add(practice)
-            student = Student(class_id=second_class.id, team_id=team.id, name="Student")
+            student = Student(
+                class_id=second_class.id, team_id=team.id, name="Student",
+                student_no="S001", phone="13800000001",
+            )
             db.add(student)
             db.flush()
             self.class_id = second_class.id
@@ -226,7 +231,7 @@ class AccessTests(unittest.TestCase):
         self.assertEqual(invalid.status_code, 400)
         created = self.client.post(
             "/api/admin/students", headers=headers,
-            json={"class_id": first_class_id, "name": "New Student", "student_no": "001"},
+            json={"class_id": first_class_id, "name": "New Student", "student_no": "001", "phone": "13800000002"},
         )
         self.assertEqual(created.status_code, 200)
         student_id = created.json()["id"]
@@ -237,7 +242,7 @@ class AccessTests(unittest.TestCase):
         self.assertEqual(listing.json()["total"], 1)
         updated = self.client.put(
             f"/api/admin/students/{student_id}", headers=headers,
-            json={"class_id": first_class_id, "name": "Updated Student", "role": "记录"},
+            json={"class_id": first_class_id, "name": "Updated Student", "student_no": "001", "phone": "13800000002", "role": "记录"},
         )
         self.assertEqual(updated.status_code, 200)
         self.assertEqual(updated.json()["role"], "记录")
@@ -283,9 +288,23 @@ class AccessTests(unittest.TestCase):
         self.assertEqual(len(self.client.get("/api/practices/featured").json()), 1)
         self.assertEqual(self.client.get(f"/api/practices/public/{self.practice_id}").status_code, 200)
 
-    def test_student_requires_teacher_issued_code(self) -> None:
-        login_body = {"team_id": self.team_id, "name": "Student", "pin": "guessed"}
+    def test_student_uses_phone_tail_as_initial_password(self) -> None:
+        login_body = {"team_id": self.team_id, "identifier": "S001", "password": "guessed"}
         self.assertEqual(self.client.post("/api/auth/student-login", json=login_body).status_code, 401)
+        login_body["password"] = "000001"
+        first_login = self.client.post("/api/auth/student-login", json=login_body)
+        self.assertEqual(first_login.status_code, 200)
+        self.assertTrue(first_login.json()["must_change_password"])
+        student_headers = {"Authorization": f"Bearer {first_login.json()['access_token']}"}
+        self.assertEqual(self.client.get(
+            f"/api/practices/student/team/{self.team_id}", headers=student_headers
+        ).status_code, 403)
+        self.assertEqual(self.client.post(
+            f"/api/practices/{self.practice_id}/evaluations", headers=student_headers,
+            json={"target_type": "self", "score": 80},
+        ).status_code, 403)
+        login_body["identifier"] = "13800000001"
+        self.assertEqual(self.client.post("/api/auth/student-login", json=login_body).status_code, 200)
         owner = self.client.post("/api/auth/login", json={"name": "Second", "password": "password-for-second"})
         owner_headers = {"Authorization": f"Bearer {owner.json()['access_token']}"}
         self.assertEqual(
@@ -296,8 +315,190 @@ class AccessTests(unittest.TestCase):
             f"/api/students/{self.student_id}/login-code", headers=owner_headers
         )
         self.assertEqual(generated.status_code, 200)
-        login_body["pin"] = generated.json()["code"]
+        self.assertEqual(generated.json()["password"], "000001")
+        login_body["password"] = generated.json()["code"]
         self.assertEqual(self.client.post("/api/auth/student-login", json=login_body).status_code, 200)
+
+    def test_student_password_reset_requires_valid_phone(self) -> None:
+        with SessionLocal() as db:
+            student = db.get(Student, self.student_id)
+            student.phone = ""
+            db.commit()
+        owner = self.client.post(
+            "/api/auth/login",
+            json={"name": "Second", "password": "password-for-second"},
+        )
+        headers = {"Authorization": f"Bearer {owner.json()['access_token']}"}
+        response = self.client.post(
+            f"/api/students/{self.student_id}/password", headers=headers
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.client.post(
+            "/api/auth/student-login",
+            json={"team_id": self.team_id, "identifier": "S001", "password": "000001"},
+        ).status_code, 401)
+
+    def test_shared_phone_requires_student_number_in_same_team(self) -> None:
+        with SessionLocal() as db:
+            second_student = Student(
+                class_id=self.class_id, team_id=self.team_id, name="Student",
+                student_no="S002", phone="13800000001",
+            )
+            db.add(second_student)
+            db.commit()
+            second_student_id = second_student.id
+
+        owner = self.client.post(
+            "/api/auth/login",
+            json={"name": "Second", "password": "password-for-second"},
+        )
+        owner_headers = {"Authorization": f"Bearer {owner.json()['access_token']}"}
+        first_code = self.client.post(
+            f"/api/students/{self.student_id}/login-code", headers=owner_headers
+        ).json()["code"]
+        second_code = self.client.post(
+            f"/api/students/{second_student_id}/login-code", headers=owner_headers
+        ).json()["code"]
+
+        self.assertEqual(first_code, second_code)
+        for identifier, code, expected_id in (
+            ("S001", first_code, self.student_id),
+            ("S002", second_code, second_student_id),
+        ):
+            response = self.client.post(
+                "/api/auth/student-login",
+                json={"team_id": self.team_id, "identifier": identifier, "password": code},
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["student_id"], expected_id)
+
+        shared_phone = self.client.post(
+            "/api/auth/student-login",
+            json={"team_id": self.team_id, "identifier": "13800000001", "password": first_code},
+        )
+        self.assertEqual(shared_phone.status_code, 409)
+
+        invalid = self.client.post(
+            "/api/auth/student-login",
+            json={"team_id": self.team_id, "identifier": "S001", "password": "wrong"},
+        )
+        self.assertEqual(invalid.status_code, 401)
+
+    def test_student_password_change_and_teacher_reset_revoke_login(self) -> None:
+        owner = self.client.post(
+            "/api/auth/login",
+            json={"name": "Second", "password": "password-for-second"},
+        )
+        headers = {"Authorization": f"Bearer {owner.json()['access_token']}"}
+        issued = self.client.post(
+            f"/api/students/{self.student_id}/password", headers=headers
+        ).json()["password"]
+        login_body = {"team_id": self.team_id, "identifier": "S001", "password": issued}
+        student_login = self.client.post("/api/auth/student-login", json=login_body)
+        self.assertEqual(student_login.status_code, 200)
+        student_headers = {"Authorization": f"Bearer {student_login.json()['access_token']}"}
+        changed = self.client.post(
+            "/api/auth/student-password", headers=student_headers,
+            json={"current_password": issued, "new_password": "new-family-password"},
+        )
+        self.assertEqual(changed.status_code, 200)
+        self.assertFalse(changed.json()["must_change_password"])
+        self.assertEqual(self.client.get(
+            f"/api/practices/student/team/{self.team_id}",
+            headers={"Authorization": f"Bearer {changed.json()['access_token']}"},
+        ).status_code, 200)
+        self.assertEqual(self.client.get(
+            f"/api/practices/student/team/{self.team_id}", headers=student_headers
+        ).status_code, 401)
+        self.assertEqual(self.client.post("/api/auth/student-login", json=login_body).status_code, 401)
+        login_body["password"] = "new-family-password"
+        new_login = self.client.post("/api/auth/student-login", json=login_body)
+        self.assertEqual(new_login.status_code, 200)
+        new_headers = {"Authorization": f"Bearer {new_login.json()['access_token']}"}
+        self.client.post(f"/api/students/{self.student_id}/password", headers=headers)
+        self.assertEqual(self.client.get(
+            f"/api/practices/student/team/{self.team_id}", headers=new_headers
+        ).status_code, 401)
+        login_body["password"] = issued
+        reset_login = self.client.post("/api/auth/student-login", json=login_body)
+        self.assertEqual(reset_login.status_code, 200)
+        self.assertTrue(reset_login.json()["must_change_password"])
+
+    def test_family_can_upload_private_practice_for_own_team(self) -> None:
+        owner = self.client.post(
+            "/api/auth/login",
+            json={"name": "Second", "password": "password-for-second"},
+        )
+        owner_headers = {"Authorization": f"Bearer {owner.json()['access_token']}"}
+        password = self.client.post(
+            f"/api/students/{self.student_id}/password", headers=owner_headers
+        ).json()["password"]
+        student_client = TestClient(app)
+        login = student_client.post(
+            "/api/auth/student-login",
+            json={"team_id": self.team_id, "identifier": "13800000001", "password": password},
+        )
+        self.assertEqual(login.status_code, 200)
+        self.assertTrue(login.json()["must_change_password"])
+        initial_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        self.assertEqual(student_client.post(
+            f"/api/practices/student/team/{self.team_id}",
+            headers=initial_headers, data={"title": "Early", "content": "Blocked"},
+        ).status_code, 403)
+        changed = student_client.post(
+            "/api/auth/student-password", headers=initial_headers,
+            json={"current_password": password, "new_password": "family-upload-password"},
+        )
+        self.assertEqual(changed.status_code, 200)
+        student_headers = {"Authorization": f"Bearer {changed.json()['access_token']}"}
+        self.assertEqual(student_client.post(
+            f"/api/practices/student/team/{self.team_id + 9999}",
+            headers=student_headers, data={"title": "Other team", "content": "Blocked"},
+        ).status_code, 404)
+        image = Image.new("RGB", (2, 2), "blue")
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        submitted = student_client.post(
+            f"/api/practices/student/team/{self.team_id}", headers=student_headers,
+            data={"title": "Family record", "content": "Observed three leaves"},
+            files={"files": ("leaf.png", buffer.getvalue(), "image/png")},
+        )
+        self.assertEqual(submitted.status_code, 200)
+        self.assertFalse(submitted.json()["published"])
+        image_path = "/" + submitted.json()["images"][0]
+        self.assertEqual(student_client.get(image_path).status_code, 200)
+        self.assertEqual(TestClient(app).get(image_path).status_code, 404)
+        own_records = student_client.get(
+            f"/api/practices/student/team/{self.team_id}", headers=student_headers
+        ).json()
+        self.assertEqual(own_records[0]["title"], "Family record")
+        public_records = self.client.get(f"/api/teams/public/{self.team_id}").json()["practices"]
+        self.assertFalse(any(item["title"] == "Family record" for item in public_records))
+        teacher_records = self.client.get(
+            f"/api/practices/team/{self.team_id}", headers=owner_headers
+        ).json()
+        self.assertTrue(any(item["title"] == "Family record" for item in teacher_records))
+        self.client.post(f"/api/students/{self.student_id}/password", headers=owner_headers)
+        self.assertEqual(student_client.get(image_path).status_code, 404)
+        reset_login = student_client.post(
+            "/api/auth/student-login",
+            json={"team_id": self.team_id, "identifier": "S001", "password": password},
+        )
+        self.assertTrue(reset_login.json()["must_change_password"])
+        self.assertEqual(student_client.get(image_path).status_code, 404)
+
+    def test_existing_phone_password_requires_change_after_upgrade(self) -> None:
+        with SessionLocal() as db:
+            student = db.get(Student, self.student_id)
+            student.pin_hash = hash_password("000001")
+            student.must_change_password = False
+            db.commit()
+        login = self.client.post(
+            "/api/auth/student-login",
+            json={"team_id": self.team_id, "identifier": "S001", "password": "000001"},
+        )
+        self.assertEqual(login.status_code, 200)
+        self.assertTrue(login.json()["must_change_password"])
 
     def test_rejects_non_image_upload(self) -> None:
         owner = self.client.post("/api/auth/login", json={"name": "Second", "password": "password-for-second"})

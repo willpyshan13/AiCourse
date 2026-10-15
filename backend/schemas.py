@@ -67,6 +67,7 @@ class TeamInfo(BaseModel):
 class StudentCreate(BaseModel):
     name: str
     student_no: str = ""
+    phone: str = ""
     grade: str = ""
     birth_date: Optional[date] = None
     role: str = ""
@@ -74,6 +75,7 @@ class StudentCreate(BaseModel):
 class StudentUpdate(BaseModel):
     team_id: Optional[int] = None
     role: Optional[str] = None
+    phone: Optional[str] = None
 
 class StudentInfo(BaseModel):
     id: int
@@ -81,6 +83,7 @@ class StudentInfo(BaseModel):
     team_id: Optional[int]
     name: str
     student_no: str
+    phone: str
     grade: str
     birth_date: Optional[date]
     role: str
@@ -142,8 +145,13 @@ class EvaluationDetail(BaseModel):
 # ===== Student Auth =====
 class StudentLoginRequest(BaseModel):
     team_id: int
-    name: str
-    pin: str
+    identifier: str
+    password: str
+
+
+class StudentPasswordChange(BaseModel):
+    current_password: str
+    new_password: str
 
 class StudentTokenResponse(BaseModel):
     access_token: str
@@ -153,6 +161,7 @@ class StudentTokenResponse(BaseModel):
     team_id: int
     team_name: str = ""
     class_name: str = ""
+    must_change_password: bool = False
 
     class Config:
         from_attributes = True

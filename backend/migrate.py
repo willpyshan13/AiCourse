@@ -14,6 +14,9 @@ def migrate() -> None:
         2: ("teachers", "password_hash", "ALTER TABLE teachers ADD COLUMN password_hash VARCHAR(256)"),
         3: ("practices", "published", "ALTER TABLE practices ADD COLUMN published BOOLEAN NOT NULL DEFAULT 0"),
         4: ("students", "pin_hash", "ALTER TABLE students ADD COLUMN pin_hash VARCHAR(256)"),
+        5: ("students", "phone", "ALTER TABLE students ADD COLUMN phone VARCHAR(20) NOT NULL DEFAULT ''"),
+        6: ("practices", "submitted_by_student_id", "ALTER TABLE practices ADD COLUMN submitted_by_student_id INTEGER"),
+        7: ("students", "must_change_password", "ALTER TABLE students ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT 0"),
     }
     with engine.begin() as connection:
         version = connection.execute(text("PRAGMA user_version")).scalar_one()

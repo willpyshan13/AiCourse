@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
@@ -8,7 +10,7 @@ from config import PRACTICE_UPLOAD_DIR, MAX_IMAGE_BYTES
 from database import get_db
 from models import Practice, Team, MemberRecord, Student, Class_, Teacher, Evaluation
 from schemas import EvaluationCreate
-from auth import get_current_teacher, get_current_student
+from auth import get_current_teacher, get_current_active_student
 from ownership import owned_practice, owned_team
 from utils.ai_analysis import analyze_practice
 
@@ -80,6 +82,33 @@ def _parse_member_records(raw: str, team_id: int, db: Session) -> list[dict]:
     return records
 
 
+async def _save_practice_images(files: List[UploadFile]) -> list[str]:
+    if len(files) > 9:
+        raise HTTPException(status_code=400, detail="最多只能上传9张图片")
+    verified_images = []
+    for file in files:
+        image_bytes = await file.read(MAX_IMAGE_BYTES + 1)
+        if len(image_bytes) > MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail="单张图片不能超过10MB")
+        try:
+            import io
+            with Image.open(io.BytesIO(image_bytes)) as image:
+                image.verify()
+                image_format = image.format
+        except (UnidentifiedImageError, OSError):
+            raise HTTPException(status_code=400, detail="图片格式无效") from None
+        extension = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}.get(image_format)
+        if extension is None:
+            raise HTTPException(status_code=400, detail="仅支持 JPEG、PNG、WebP 图片")
+        verified_images.append((f"{uuid4().hex}{extension}", image_bytes))
+    saved_images = []
+    for filename, image_bytes in verified_images:
+        async with aiofiles.open(PRACTICE_UPLOAD_DIR / filename, "wb") as output:
+            await output.write(image_bytes)
+        saved_images.append(f"uploads/practices/{filename}")
+    return saved_images
+
+
 @router.get("/team/{team_id}", response_model=List[dict])
 def list_practices(
     team_id: int,
@@ -104,6 +133,7 @@ def list_practices(
             "ai_analysis": p.ai_analysis,
             "ai_summary": p.ai_summary,
             "published": p.published,
+            "submitted_by_student_id": p.submitted_by_student_id,
             "teacher_score": teacher_eval.score if teacher_eval else None,
             "peer_avg_score": avg_score,
             "member_count": len(p.member_records),
@@ -169,31 +199,8 @@ async def create_practice(
     team = owned_team(db, team_id, int(payload["sub"]))
     if not team:
         raise HTTPException(status_code=404, detail="小组不存在")
-    if len(files) > 9:
-        raise HTTPException(status_code=400, detail="最多只能上传9张图片")
     member_records_data = _parse_member_records(member_works, team_id, db)
-    verified_images = []
-    for f in files:
-        image_bytes = await f.read(MAX_IMAGE_BYTES + 1)
-        if len(image_bytes) > MAX_IMAGE_BYTES:
-            raise HTTPException(status_code=413, detail="单张图片不能超过10MB")
-        try:
-            import io
-            with Image.open(io.BytesIO(image_bytes)) as image:
-                image.verify()
-                fmt = image.format
-        except (UnidentifiedImageError, OSError):
-            raise HTTPException(status_code=400, detail="图片格式无效") from None
-        extension = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}.get(fmt)
-        if extension is None:
-            raise HTTPException(status_code=400, detail="仅支持 JPEG、PNG、WebP 图片")
-        verified_images.append((f"{uuid4().hex}{extension}", image_bytes))
-    saved_images = []
-    for filename, image_bytes in verified_images:
-        path = PRACTICE_UPLOAD_DIR / filename
-        async with aiofiles.open(path, "wb") as out:
-            await out.write(image_bytes)
-        saved_images.append(f"uploads/practices/{filename}")
+    saved_images = await _save_practice_images(files)
 
     practice = Practice(team_id=team_id, title=title, content=content, images=saved_images)
     db.add(practice)
@@ -226,6 +233,70 @@ async def create_practice(
         "ai_summary": practice.ai_summary, "member_records": member_records_data,
         "created_at": practice.created_at.isoformat(),
     }
+
+
+@router.get("/student/team/{team_id}")
+def list_student_submissions(
+    team_id: int,
+    student: dict = Depends(get_current_active_student),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    if student["team_id"] != team_id:
+        raise HTTPException(status_code=404, detail="小组不存在")
+    practices = db.query(Practice).filter(
+        Practice.team_id == team_id,
+        Practice.submitted_by_student_id == student["student_id"],
+    ).order_by(Practice.created_at.desc()).all()
+    return [{
+        "id": practice.id,
+        "title": practice.title,
+        "content": practice.content,
+        "images": practice.images or [],
+        "published": practice.published,
+        "submitted_by_student_id": practice.submitted_by_student_id,
+        "created_at": practice.created_at.isoformat(),
+    } for practice in practices]
+
+
+@router.post("/student/team/{team_id}")
+async def create_student_submission(
+    team_id: int,
+    title: str = Form(...),
+    content: str = Form(""),
+    files: List[UploadFile] = File(default=[]),
+    student: dict = Depends(get_current_active_student),
+    db: Session = Depends(get_db),
+) -> dict:
+    if student["team_id"] != team_id:
+        raise HTTPException(status_code=404, detail="小组不存在")
+    title = title.strip()
+    content = content.strip()
+    if not title or len(title) > 128 or len(content) > 10000:
+        raise HTTPException(status_code=400, detail="标题或内容长度无效")
+    if not content and not files:
+        raise HTTPException(status_code=400, detail="请填写记录或上传图片")
+    images = await _save_practice_images(files)
+    practice = Practice(
+        team_id=team_id, title=title, content=content, images=images,
+        submitted_by_student_id=student["student_id"], published=False,
+    )
+    db.add(practice)
+    db.flush()
+    db.add(MemberRecord(
+        practice_id=practice.id,
+        student_id=student["student_id"],
+        work_description="家庭提交",
+    ))
+    try:
+        analysis = await analyze_practice(title, content, f"- {student['name']}：家庭提交")
+        practice.ai_analysis = analysis.get("analysis", "")
+        practice.ai_summary = analysis.get("summary", "")
+    except Exception:
+        practice.ai_analysis = "参考分析暂不可用"
+        practice.ai_summary = ""
+    db.commit()
+    db.refresh(practice)
+    return {"id": practice.id, "title": practice.title, "images": images, "published": False}
 
 
 @router.get("/{practice_id}", response_model=dict)
@@ -396,7 +467,7 @@ def evaluate_practice(
 def create_student_evaluation(
     practice_id: int,
     body: EvaluationCreate,
-    student: dict = Depends(get_current_student),
+    student: dict = Depends(get_current_active_student),
     db: Session = Depends(get_db),
 ):
     practice = db.query(Practice).filter(Practice.id == practice_id, Practice.published.is_(True)).first()

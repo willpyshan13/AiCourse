@@ -260,11 +260,12 @@ async function loadAdminStudents() {
     if (!list) return;
     list.innerHTML = page.items.length ? page.items.map(function(student) {
       return '<div class="admin-row"><div class="admin-row-main"><strong>' + escapeHtml(student.name) + '</strong></div>' +
-        '<div class="admin-row-sub">学号：' + escapeHtml(student.student_no || '未填写') +
+      '<div class="admin-row-sub">学号：' + escapeHtml(student.student_no || '未填写') +
+        ' · 手机号：' + escapeHtml(student.phone || '未填写') +
         ' · 小组：' + escapeHtml(student.team_name || '未分组') +
         ' · 职责：' + escapeHtml(student.role || '未设置') + '</div>' +
         '<div class="admin-actions"><button onclick="openAdminStudentForm(' + student.id + ')">编辑</button>' +
-        '<button onclick="resetAdminStudentCode(' + student.id + ')">生成登录口令</button>' +
+        '<button onclick="resetAdminStudentCode(' + student.id + ')">重置密码</button>' +
         '<button onclick="deleteAdminStudent(' + student.id + ')">删除</button></div></div>';
     }).join('') : '<div class="admin-empty">没有符合条件的学生</div>';
     list.innerHTML += '<div class="admin-pager"><span>共 ' + page.total + ' 名学生</span>' +
@@ -292,6 +293,7 @@ async function openAdminStudentForm(id) {
     adminModal(student ? '编辑学生' : '新增学生',
       '<label>姓名</label><input id="admin-student-name" class="input-field" maxlength="64" value="' + adminAttr(student ? student.name : '') + '">' +
       '<label>学号</label><input id="admin-student-no" class="input-field" maxlength="32" value="' + adminAttr(student ? student.student_no : '') + '">' +
+      '<label>手机号</label><input id="admin-student-phone" class="input-field" maxlength="20" inputmode="tel" value="' + adminAttr(student ? student.phone : '') + '">' +
       '<label>年级</label><input id="admin-student-grade" class="input-field" maxlength="32" value="' + adminAttr(student ? student.grade : '') + '">' +
       '<label>出生日期</label><input id="admin-student-birth" class="input-field" type="date" value="' + adminAttr(student ? student.birth_date : '') + '">' +
       '<label>小组</label><select id="admin-student-team" class="input-field">' + options + '</select>' +
@@ -308,6 +310,7 @@ async function saveAdminStudent(id, classId) {
     class_id: classId,
     name,
     student_no: $('admin-student-no').value.trim(),
+    phone: $('admin-student-phone').value.trim(),
     grade: $('admin-student-grade').value.trim(),
     birth_date: $('admin-student-birth').value || null,
     team_id: $('admin-student-team').value ? Number($('admin-student-team').value) : null,
@@ -324,11 +327,10 @@ async function saveAdminStudent(id, classId) {
 
 async function resetAdminStudentCode(id) {
   const student = adminStudentPage.items.find(item => item.id === id);
-  if (!student || !confirm('重新生成后，旧登录口令将无法再次登录。确定为“' + student.name + '”生成新口令吗？')) return;
+  if (!student || !confirm('重置后密码将是登记手机号后6位，旧密码会失效。确定重置“' + student.name + '”的密码吗？')) return;
   try {
-    const result = await adminApi.resetStudentCode(id);
-    adminModal('学生登录口令', '<p class="admin-note">请私下发送给 ' + escapeHtml(student.name) + '。关闭后不再显示。</p>' +
-      '<div class="admin-code">' + escapeHtml(result.code) + '</div>' +
+    await adminApi.resetStudentCode(id);
+    adminModal('学生登录密码', '<p class="admin-note">已重置为登记手机号后6位。' + escapeHtml(student.name) + ' 登录后必须先修改密码。</p>' +
       '<button class="btn-primary" onclick="closeAdminModal()">完成</button>');
   } catch (error) { adminError(error); }
 }

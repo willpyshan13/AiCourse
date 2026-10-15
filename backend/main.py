@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 
 from config import ALLOWED_ORIGINS, JWT_SECRET_KEY, UPLOAD_DIR, PRACTICE_UPLOAD_DIR
 from database import get_db
-from auth import teacher_token_version, verify_token
+from auth import STUDENT_TOKEN_VERSION, teacher_token_version, verify_token
 from migrate import migrate
-from models import Practice, Teacher
+from models import Practice, Student, Teacher
 from routers import admin, auth, classes, students, teams, practices
 
 if not JWT_SECRET_KEY:
@@ -79,22 +79,38 @@ def serve_practice_image(filename: str, request: Request, db: Session = Depends(
     if not practices:
         raise HTTPException(status_code=404)
     if not any(p.published for p in practices):
-        token = request.cookies.get("teacher_media")
-        if not token:
-            raise HTTPException(status_code=404)
-        try:
-            payload = verify_token(token)
-            if payload.get("role") != "teacher":
-                raise ValueError
-            teacher_id = int(payload["sub"])
-        except (ValueError, KeyError, HTTPException):
-            raise HTTPException(status_code=404) from None
-        teacher = db.get(Teacher, teacher_id)
-        if teacher is None or not teacher.authorized:
-            raise HTTPException(status_code=404)
-        if payload.get("password_version") != teacher_token_version(teacher.password_hash):
-            raise HTTPException(status_code=404)
-        if not any(p.team.class_.teacher_id == teacher_id for p in practices):
+        authorized = False
+        for role, cookie_name in (("teacher", "teacher_media"), ("student", "student_media")):
+            token = request.cookies.get(cookie_name)
+            if not token:
+                continue
+            try:
+                payload = verify_token(token)
+                if payload.get("role") != role:
+                    continue
+                account_id = int(payload["sub"])
+            except (ValueError, KeyError, HTTPException):
+                continue
+            if role == "teacher":
+                teacher = db.get(Teacher, account_id)
+                authorized = bool(
+                    teacher and teacher.authorized
+                    and payload.get("password_version") == teacher_token_version(teacher.password_hash)
+                    and any(p.team.class_.teacher_id == account_id for p in practices)
+                )
+            else:
+                student = db.get(Student, account_id)
+                authorized = bool(
+                    student and student.pin_hash
+                    and not student.must_change_password
+                    and payload.get("auth_version") == STUDENT_TOKEN_VERSION
+                    and payload.get("password_version") == teacher_token_version(student.pin_hash)
+                    and str(student.team_id) == payload.get("team_id")
+                    and any(p.submitted_by_student_id == account_id for p in practices)
+                )
+            if authorized:
+                break
+        if not authorized:
             raise HTTPException(status_code=404)
     return FileResponse(image_path)
 

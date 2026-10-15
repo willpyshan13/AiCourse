@@ -59,6 +59,26 @@ async function api(path, options = {}) {
   return res.json();
 }
 
+async function studentRequest(path, options = {}) {
+  const headers = { ...options.headers };
+  const token = getStudentToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (options.body && typeof options.body === 'object' && !(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify(options.body);
+  }
+  const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem('studentToken');
+      localStorage.removeItem('studentInfo');
+    }
+    const error = await response.json().catch(() => ({ detail: '操作失败' }));
+    throw new Error(error.detail || '操作失败');
+  }
+  return response.json();
+}
+
 const authApi = {
   login: (name, password) =>
     api('/auth/login', { method: 'POST', body: { name, password } }),
@@ -94,7 +114,7 @@ const adminApi = {
   addStudent: (data) => adminRequest('/students', { method: 'POST', body: data }),
   updateStudent: (id, data) => adminRequest(`/students/${id}`, { method: 'PUT', body: data }),
   deleteStudent: (id) => adminRequest(`/students/${id}`, { method: 'DELETE' }),
-  resetStudentCode: (id) => adminRequest(`/students/${id}/login-code`, { method: 'POST' }),
+  resetStudentCode: (id) => adminRequest(`/students/${id}/password`, { method: 'POST' }),
 };
 
 const classApi = {
@@ -124,12 +144,26 @@ const teamApi = {
 };
 
 const studentApi = {
-  login: (teamId, name, pin) =>
-    api('/auth/student-login', { method: 'POST', body: { team_id: teamId, name, pin } }),
+  login: (teamId, identifier, password) =>
+    studentRequest('/auth/student-login', { method: 'POST', body: { team_id: teamId, identifier, password } }),
+  logout: () => studentRequest('/auth/student-logout', { method: 'POST' }),
+  changePassword: (currentPassword, newPassword) =>
+    studentRequest('/auth/student-password', {
+      method: 'POST', body: { current_password: currentPassword, new_password: newPassword }
+    }),
+  me: () => studentRequest('/auth/student-me'),
+  submissions: (teamId) => studentRequest(`/practices/student/team/${teamId}`),
+  submit: (teamId, title, content, files) => {
+    const form = new FormData();
+    form.append('title', title);
+    form.append('content', content);
+    for (const file of files) form.append('files', file);
+    return studentRequest(`/practices/student/team/${teamId}`, { method: 'POST', body: form });
+  },
   get: (id) => api(`/students/${id}`),
   update: (id, data) => api(`/students/${id}`, { method: 'PUT', body: data }),
   delete: (id) => api(`/students/${id}`, { method: 'DELETE' }),
-  resetLoginCode: (id) => api(`/students/${id}/login-code`, { method: 'POST' }),
+  resetLoginCode: (id) => api(`/students/${id}/password`, { method: 'POST' }),
 };
 
 const practiceApi = {
